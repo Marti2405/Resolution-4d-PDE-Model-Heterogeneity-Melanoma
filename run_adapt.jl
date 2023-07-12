@@ -82,7 +82,18 @@ line()
 
 # Create directory for saving images
 svpth = "images/run_adapt/"
-#mkdir(svpth)
+try
+    mkdir(svpth)
+end
+try 
+    mkdir("$(svpth)/Cx,t")
+end
+try
+    mkdir("$(svpth)/Cy,t")
+end
+try
+    mkdir("$(svpth)/v")
+end
 ##-----------------------------------------------------------------------
 
 
