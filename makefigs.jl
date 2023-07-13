@@ -68,7 +68,7 @@ function makefigs(it, c, v, m, p, t, vC, svC, ptt, svfg, svpth)
   
         # Trim or pad y_adjusted to match the desired size
         xCC = sort([x_adjusted[1:num_columns, :]...][1:hdly-1])
-        Plots.heatmap!(xCC, xCC, CC[1:end-1,1:end-1])
+        Plots.heatmap!(xCC, xCC, CC[1:end-1,1:end-1]')
         #plot!(size=(800,800)) # define the size of the plot default=(600,400)
         Plots.xlims!(0, 1)
         Plots.ylims!(0, 1)
