@@ -1,3 +1,11 @@
+#######################################################
+# This code has been optimised to run in 4 threads,
+# if you want to use this optimisation please
+# run the code with this command :
+#
+#          julia --threads 4 run_adapt.jl
+#
+#######################################################
 "
 
 
@@ -34,12 +42,50 @@ Code description :
 
 
 
-using Dates,Plots,CSV
-import PyPlot
+using Dates,Plots, Base.Threads
+
+
+## MULTI-THREADING FUNCTIONS ------------------------------------------
+println("Numer of threads : $(Threads.nthreads())\n")
+# function to thread the calculation of the predictor step
+function threaded_predictor_step(c, v, m, p, dt)
+    cn = @spawn c + dt .* partialc(c, v, m, p)
+    vn = @spawn v + dt .* partialv(c, v, m, p)
+    mn = @spawn m + dt .* partialm(c, v, m, p)
+    pn = @spawn p + dt .* partialp(c, v, m, p)
+
+    # Fetch the results from each thread
+    cn = fetch(cn)
+    vn = fetch(vn)
+    mn = fetch(mn)
+    pn = fetch(pn)
+
+    return cn, vn, mn, pn
+end
 
 
 
+# threaded update of the variables to stay in valid range
+function threaded_update(cu, vu, mu, pu)
+    cnew_u = @spawn max.(cu, 0)
+    vnew_u = @spawn max.(min.(vu, 1), 0)
+    mnew_u = @spawn max.(min.(mu, 1), 0)
+    pnew_u = @spawn max.(min.(pu, 1), 0)
 
+    # Fetch the results from each thread
+    cnew_u = fetch(cnew_u)
+    vnew_u = fetch(vnew_u)
+    mnew_u = fetch(mnew_u)
+    pnew_u = fetch(pnew_u)
+
+    return cnew_u, vnew_u, mnew_u, pnew_u
+end
+
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
+
+
+# Display line
 function line()
     println("----------------------------")
 end
@@ -82,18 +128,6 @@ line()
 
 # Create directory for saving images
 svpth = "images/run_adapt/"
-try
-    mkdir(svpth)
-end
-try 
-    mkdir("$(svpth)/Cx,t")
-end
-try
-    mkdir("$(svpth)/Cy,t")
-end
-try
-    mkdir("$(svpth)/v")
-end
 ##-----------------------------------------------------------------------
 
 
@@ -108,7 +142,7 @@ end
 
 # parameters
 dt = 0.2
-Tmx = 360 #360 Number of days
+Tmx = 15 #360 Number of days
 t = 0:dt:Tmx
 Np = 2 # number of drugs
 ptt = Vector{Any}(undef, 2)
@@ -147,7 +181,7 @@ tpos = 0 #init tpos
 iter = 0 # track number of iterations
 
 first_ptt = true # boolean to check the first time that we put elements in the Vector ptt
-
+mean_time = 0
 
 
 for i in t 
@@ -187,7 +221,7 @@ for i in t
                 ch = 1
             end
         else # if we are between the thresholds
-            if global treatment_log[tpos-1] # if we where in treatment we stay in treatment
+            if treatment_log[tpos-1] # if we where in treatment we stay in treatment
                 global treatment_log[tpos] = true
             end
         end
@@ -219,12 +253,14 @@ for i in t
 
     end
     
+
+
     # predictor step
     cnew = c + dt .* partialc(c, v, m, p)
     vnew = v + dt .* partialv(c, v, m, p)
     mnew = m + dt .* partialm(c, v, m, p)
     pnew = p + dt .* partialp(c, v, m, p)
-    
+    # cnew, vnew, mnew, pnew = threaded_predictor_step(c, v, m, p, dt)
     
     
     # corrector step
@@ -242,6 +278,8 @@ for i in t
     global m[m .> 1] .= 1
     global p[p .< 0] .= 0
     global p[p .> 1] .= 1
+    # c, v, m, p = threaded_update(c, v, m, p)
+
     
     
 
@@ -254,21 +292,27 @@ for i in t
 
     # Figures
     if rem(i, 1) < 1e-4
-        makefigs(i, c, v, m, p, t, vC, svC, ptt, 1, svpth) # create makefigs file
-        println("\nDone $(i/dt) in $(time()-time_iteration) seconds\n")
-        
+        #makefigs(i, c, v, m, p, t, vC, svC, ptt, 1, svpth) # create makefigs file
+
+        time_current_iter = time()-time_iteration
+        println("\nDone $(i/dt) in $(time_current_iter) seconds\n")
+        global mean_time += time_current_iter
         sleep(0.01)
     end
 
 
 end
 
+mean_time = ((1/iter)+5) * mean_time
 
-
+line()
+println("\nMean time for 1 iteration : $(mean_time) seconds\n")
+line()
 # save the evolution of the volume of the tumor
 F = plot(t,vC)
 savefig(F, joinpath("$(svpth)v", "vC.png"))
-
+println("Image vC.png Saved")
+line()
 
 # save v0 
 F = plot(size=(800, 800), aspect_ratio=:equal, xlim=(0, 1), ylim=(0, 1), colorbar=true)
